@@ -25,6 +25,7 @@ public class PartnerResponse {
     private boolean isSendEmail;
     private boolean responseReceived;
     private String alarmType;
+    private String reason;
 
     // Partner information
     @Column(nullable = false)

@@ -77,6 +77,7 @@ public class NetworkDataScheduler {
                         if ("UP".equals(alarmType)) {
                             partnerResponse.setTimeUp(alarm.getEndTime());
                         }
+                        partnerResponse.setReason(alarm.getReason());
                         partnerResponse.setSendEmail(true);
                         partnerResponse.setAlarmType(alarmType);
                         partnerResponse.setPartnerId(partner.getPartnerId());
