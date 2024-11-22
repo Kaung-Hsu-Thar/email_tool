@@ -1,20 +1,31 @@
 package com.networkProblem.schedule.service;
 
+import com.networkProblem.schedule.model.EmailTemplate;
 import com.networkProblem.schedule.model.Partner;
 import com.networkProblem.schedule.nocprodb.AlarmInfo;
+import com.networkProblem.schedule.repository.EmailTemplateRepository;
+import jakarta.mail.MessagingException;
+import jakarta.mail.internet.MimeMessage;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @Transactional
 public class EmailService {
+
+    @Autowired
+    private EmailTemplateRepository emailTemplateRepository;
 
     @Autowired
     private JavaMailSender javamailSender;
@@ -29,68 +40,60 @@ public class EmailService {
         return dateTime.format(formatter);
     }
 
-    // Send Site-Down Notification Email
-    public String sendSiteDownNotification(Partner partner, AlarmInfo alarmInfo) {
-        String partnerName = partner.getPartnerName();
-        String siteCode = alarmInfo.getSiteCode();
-        String occurredTime = formatDateTime(alarmInfo.getOccurredTime());
-
-        String emailBody = String.format(
-                "Dear %s,\n\n" +
-                        "%s down at %s.\n" +
-                        "Please check the site down reason and feedback to us.\n\n" +
-                        "Thank you,\nMytel Team",
-                partnerName, siteCode, occurredTime
-        );
-
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromEmail);
-        message.setTo(partner.getPartnerEmail());
-        message.setSubject(String.format("%s site down %s", partnerName, siteCode));
-        message.setText(emailBody);
-
-        try {
-            javamailSender.send(message);
-            return "SUCCESS";
-        } catch (Exception e) {
-            System.err.println("Failed to send site-down email: " + e.getMessage());
-            return "FAIL";
+    // Utility to populate placeholders in templates
+    private String populateTemplate(String template, Map<String, String> placeholders) {
+        for (Map.Entry<String, String> entry : placeholders.entrySet()) {
+            template = template.replace("{" + entry.getKey() + "}", entry.getValue());
         }
+        return template;
     }
 
-    // Send Site-Up Notification Email
-    public String sendSiteUpNotification(Partner partner, AlarmInfo alarmInfo) {
-        String alarmId = alarmInfo.getAlarmId();
-        String partnerName = partner.getPartnerName();
-        String siteCode = alarmInfo.getSiteCode();
-        String occurredTime = formatDateTime(alarmInfo.getOccurredTime());
-        String endTime = formatDateTime(alarmInfo.getEndTime());
+    public String sendTemplateNotification(Partner partner, AlarmInfo alarmInfo, String templateName) {
+        EmailTemplate emailTemplate = emailTemplateRepository.findByTemplateName(templateName);
+        if (emailTemplate == null) {
+            throw new IllegalArgumentException("Template not found: " + templateName);
+        }
 
-        String emailBody = String.format(
-                "Dear %s,\n\n" +
-                        "%s up at %s.\n" +
-                        "Period of time down is from: %s to %s.\n" +
-                        "Please give feedback to us the root cause of this incident as template:\n" +
-                        "- AlarmId:"+ alarmId +".\n"+
-                        "- Site code: ……………….\n" +
-                        "- Time down: …………..\n" +
-                        "- Time up: ………………\n" +
-                        "- Root cause: ……………….\n\n" +
-                        "Thank you,\nMytel Team",
-                partnerName, siteCode, endTime, occurredTime, endTime
-        );
+        // Create a map of placeholders and their corresponding values
+        Map<String, String> placeholders = new HashMap<>();
+        placeholders.put("TCO_name", partner.getPartnerName());
+        placeholders.put("Site_code", alarmInfo.getSiteCode());
+        placeholders.put("Time_down", formatDateTime(alarmInfo.getOccurredTime()));
 
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setFrom(fromEmail);
-        message.setTo(partner.getPartnerEmail());
-        message.setSubject(String.format("%s site up %s", partnerName, siteCode));
-        message.setText(emailBody);
+        if ("site_up".equals(templateName)) {
+            placeholders.put("Time_up", formatDateTime(alarmInfo.getEndTime()));
+            placeholders.put("Alarm_id", alarmInfo.getAlarmId());
+        }
 
+        // Populate the subject and body with placeholders
+        String subject = populateTemplate(emailTemplate.getSubject(), placeholders);
+        String body = populateTemplate(emailTemplate.getBody(), placeholders);
+
+        // Send the email
+        return sendHtmlEmail(partner.getPartnerEmail(), subject, body);
+    }
+
+    private String sendHtmlEmail(String to, String subject, String body) {
         try {
+            // Create a MimeMessage
+            MimeMessage message = javamailSender.createMimeMessage();
+
+            // Create a MimeMessageHelper to set the message's parameters
+            MimeMessageHelper helper = new MimeMessageHelper(message, true);
+
+
+            helper.setFrom(fromEmail);
+            helper.setTo(to);
+            helper.setSubject(subject);
+
+            // Set the email content type as HTML
+            helper.setText(body, true);
+
+            // Send the email
             javamailSender.send(message);
             return "SUCCESS";
-        } catch (Exception e) {
-            System.err.println("Failed to send site-up email: " + e.getMessage());
+        } catch (MessagingException | MailException e) {
+            System.err.println("Failed to send email: " + e.getMessage());
             return "FAIL";
         }
     }

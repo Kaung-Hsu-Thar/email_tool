@@ -2,12 +2,14 @@ package com.networkProblem.schedule.service;
 
 import com.networkProblem.schedule.model.Partner;
 import com.networkProblem.schedule.model.PartnerResponse;
+import com.networkProblem.schedule.repository.EmailTemplateRepository;
 import com.networkProblem.schedule.repository.PartnerResponseRepository;
 import com.networkProblem.schedule.repository.PartnerRepository;
 import jakarta.mail.*;
 import jakarta.mail.internet.*;
 import jakarta.mail.search.ReceivedDateTerm;
 import lombok.extern.slf4j.Slf4j;
+import org.jsoup.Jsoup;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -22,6 +24,8 @@ import java.util.regex.*;
 @Transactional
 @Slf4j
 public class EmailListenerService {
+    @Autowired
+    private EmailTemplateRepository emailTemplateRepository;
 
     @Autowired
     private PartnerResponseRepository partnerResponseRepository;
@@ -97,13 +101,23 @@ public class EmailListenerService {
                                 log.info("Extracted details - AlarmId: {}, SiteCode: {}, TimeDown: {}, TimeUp: {}, RootCause: {}",
                                         alarmId, siteCode, timeDown, timeUp, rootCause);
 
+                                // Adding DateTime parsing
+                                DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss");
+                                LocalDateTime parsedTimeDown = LocalDateTime.parse(timeDown, formatter);
+                                LocalDateTime parsedTimeUp = LocalDateTime.parse(timeUp, formatter);
+
+
                                 if (siteCode != null && timeDown != null && timeUp != null && rootCause != null) {
+
                                     PartnerResponse partnerResponse = existingResponse.get();
                                     partnerResponse.setResponseReceived(true);
                                     partnerResponse.setUpdatedAt(LocalDateTime.now());
-                                    partnerResponse.setPartnerReply("Site code: " + siteCode + "\n Time down: " +
-                                            LocalDateTime.parse(timeDown, DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss")) + "\n Time up: " +
-                                            LocalDateTime.parse(timeUp, DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss")) + "\n Root cause: " + rootCause);
+                                    partnerResponse.setPartnerReply(
+                                            "Site code: " + siteCode + "\n Time down: " +
+                                                    LocalDateTime.parse(timeDown, formatter) + "\n Time up: " +
+                                                    LocalDateTime.parse(timeUp, formatter) + "\n Root cause: " + rootCause
+                                    );
+
 
                                     partnerResponseRepository.save(partnerResponse);
                                     log.info("Updated partner response for AlarmId: {}", alarmId);
@@ -139,13 +153,14 @@ public class EmailListenerService {
                 if (part.isMimeType("text/plain")) {
                     content.append(part.getContent());
                 }
+
             }
         }
         return content.toString();
     }
 
     private String extractAlarmId(String content) {
-        String regex = "- AlarmId:(.+?)\\.";
+        String regex = "AlarmId:\\s*(\\S+)";
         Pattern pattern = Pattern.compile(regex);
         Matcher matcher = pattern.matcher(content);
 
@@ -156,8 +171,8 @@ public class EmailListenerService {
     }
 
     private String extractField(String content, String fieldPrefix) {
-        String regex = fieldPrefix + "\\s*(.+)";
-        Pattern pattern = Pattern.compile(regex);
+        String regex = fieldPrefix + "\\s*([^\\n]*)";
+        Pattern pattern = Pattern.compile(regex, Pattern.DOTALL);
         Matcher matcher = pattern.matcher(content);
 
         if (matcher.find()) {

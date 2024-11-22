@@ -32,7 +32,12 @@ public class AlarmService {
                     .siteCode("YGN1234")
                     .occurredTime(LocalDateTime.parse("01-11-2024 00:00:00", formatter))
                     .build());
-
+            add(AlarmInfo.builder()
+                    .alarmId("ALARM_DOWN_004")
+                    .owner("ZTE 1")
+                    .siteCode("YGN1234")
+                    .occurredTime(LocalDateTime.parse("01-11-2024 00:00:00", formatter))
+                    .build());
         }};
     }
 
@@ -56,6 +61,14 @@ public class AlarmService {
                     .build());
             add(AlarmInfo.builder()
                     .alarmId("ALARM_UP_003")
+                    .owner("ZTE 1")
+                    .siteCode("YGN1234")
+                    .occurredTime(LocalDateTime.parse("01-11-2024 00:00:00", formatter))
+                    .endTime(LocalDateTime.parse("01-11-2024 00:00:00", formatter))
+                    .reason("Fake reason")
+                    .build());
+            add(AlarmInfo.builder()
+                    .alarmId("ALARM_UP_004")
                     .owner("ZTE 1")
                     .siteCode("YGN1234")
                     .occurredTime(LocalDateTime.parse("01-11-2024 00:00:00", formatter))

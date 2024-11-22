@@ -13,7 +13,8 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.util.List;
+import java.util.Optional;
 
 @Component
 @Slf4j
@@ -40,13 +41,13 @@ public class NetworkDataScheduler {
     @Scheduled(cron = "0 * * ? * *")
     public void checkNetworkDataConnection() {
         log.info("Scheduled task triggered at: {}", LocalDateTime.now());
-        processAlarms(alarmService.getSiteDown(LocalDateTime.now().minusHours(1)), "DOWN");
-        processAlarms(alarmService.getSiteUp(LocalDateTime.now().minusHours(1)), "UP");
+        processAlarms(alarmService.getSiteDown(LocalDateTime.now().minusHours(1)), "DOWN", "site_down");
+        processAlarms(alarmService.getSiteUp(LocalDateTime.now().minusHours(1)), "UP", "site_up");
 
         emailListenerService.listenForReplies();
     }
 
-    private void processAlarms(List<AlarmInfo> alarms, String alarmType) {
+    private void processAlarms(List<AlarmInfo> alarms, String alarmType, String templateName) {
         for (AlarmInfo alarm : alarms) {
             String alarmPrefix = alarmType.equals("DOWN") ? "ALARM_DOWN_" : "ALARM_UP_";
             if (alarm.getAlarmId().startsWith(alarmPrefix)) {
@@ -61,13 +62,9 @@ public class NetworkDataScheduler {
                         return;
                     }
 
-                    boolean emailSent = sendEmailWithRetry(() -> {
-                        if ("DOWN".equals(alarmType)) {
-                            return emailService.sendSiteDownNotification(partner, alarm);
-                        } else {
-                            return emailService.sendSiteUpNotification(partner, alarm);
-                        }
-                    });
+                    boolean emailSent = sendEmailWithRetry(() ->
+                            emailService.sendTemplateNotification(partner, alarm, templateName)
+                    );
 
                     if (emailSent) {
                         PartnerResponse partnerResponse = new PartnerResponse();
@@ -84,9 +81,10 @@ public class NetworkDataScheduler {
                         partnerResponse.setEmail(partner.getPartnerEmail());
                         partnerResponse.setCreatedAt(LocalDateTime.now());
                         partnerResponseRepository.save(partnerResponse);
+                        log.info("Email sent successfully to {} with alarmId: {}" , alarm.getOwner(), alarm.getAlarmId());
                     } else {
+                       // log.error("Email failed after {} retries for alarmId: {}", MAX_RETRIES, alarm.getAlarmId());
                         //TODO warning to developer check why email send fail 3 times
-
                     }
                 }
             }
@@ -105,10 +103,9 @@ public class NetworkDataScheduler {
         return false;
     }
 
-
     public boolean hasSiteBeenProcessed(String alarmId) {
         boolean exists = partnerResponseRepository.existsByAlarmId(alarmId);
-        log.info("Checking if site with alarmId: " + alarmId + " has been processed: " + exists);
+        log.info("Checking if site with alarmId: {} has been processed: {}", alarmId, exists);
         return exists;
     }
 
@@ -124,7 +121,7 @@ public class NetworkDataScheduler {
             if ("SUCCESS".equals(result)) {
                 return true;
             }
-            log.info("Email send failed, retry attempt " + attempt);
+            log.info("Email send failed, retry attempt {}", attempt);
         }
         return false;
     }
